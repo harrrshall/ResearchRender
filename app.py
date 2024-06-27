@@ -15,7 +15,7 @@ import logging
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder='static')
 
 # MongoDB configuration
 MONGO_URI = os.environ.get('MONGO_URI')
@@ -38,11 +38,11 @@ ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory('static', 'index.html')
 
 @app.route('/logic.html')
 def logic():
-    return send_from_directory('.', 'logic.html')
+    return send_from_directory('static', 'logic.html')
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -154,4 +154,5 @@ def upload_file():
         return jsonify({'error': 'Allowed file types are txt, pdf, doc, docx'}), 400
 
 # This line is needed for Vercel
-app = app
+if __name__ == '__main__':
+    app.run()
