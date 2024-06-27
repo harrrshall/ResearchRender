@@ -1,15 +1,20 @@
 {
   "version": 2,
-  "functions": {
-    "api/*": {
-      "runtime": "vercel-python@3.10.12",  // Use the appropriate version here
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/app.py"
+      "dest": "app.py"
     }
-  ]
+  ],
+  "functions": {
+    "app.py": {
+      "maxDuration": 30
+    }
+  }
 }
