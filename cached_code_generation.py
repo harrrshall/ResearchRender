@@ -15,7 +15,8 @@ from pymongo import MongoClient
 load_dotenv()
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # MongoDB configuration
@@ -62,6 +63,7 @@ GROQ_RATE_LIMIT = 30  # requests per minute
 last_gemini_request = 0
 last_groq_request = 0
 
+
 def rate_limit(api_type: str) -> None:
     """Apply rate limiting for API requests."""
     global last_gemini_request, last_groq_request
@@ -69,18 +71,23 @@ def rate_limit(api_type: str) -> None:
 
     if api_type == "gemini":
         if current_time - last_gemini_request < 60 / GEMINI_RATE_LIMIT:
-            sleep_time = 60 / GEMINI_RATE_LIMIT - (current_time - last_gemini_request)
-            logger.debug(f"Rate limiting Gemini API, sleeping for {sleep_time:.2f} seconds")
+            sleep_time = 60 / GEMINI_RATE_LIMIT - \
+                (current_time - last_gemini_request)
+            logger.debug(
+                f"Rate limiting Gemini API, sleeping for {sleep_time:.2f} seconds")
             time.sleep(sleep_time)
         last_gemini_request = time.time()
     elif api_type == "groq":
         if current_time - last_groq_request < 60 / GROQ_RATE_LIMIT:
-            sleep_time = 60 / GROQ_RATE_LIMIT - (current_time - last_groq_request)
-            logger.debug(f"Rate limiting Groq API, sleeping for {sleep_time:.2f} seconds")
+            sleep_time = 60 / GROQ_RATE_LIMIT - \
+                (current_time - last_groq_request)
+            logger.debug(
+                f"Rate limiting Groq API, sleeping for {sleep_time:.2f} seconds")
             time.sleep(sleep_time)
         last_groq_request = time.time()
     else:
         logger.warning(f"Unknown API type for rate limiting: {api_type}")
+
 
 def get_content_hash(content: str) -> str:
     """Generate a hash for the content."""
@@ -88,18 +95,23 @@ def get_content_hash(content: str) -> str:
     logger.debug(f"Generated hash for content: {content_hash}")
     return content_hash
 
+
 def load_cache(content_hash: str, cache_type: str) -> Optional[str]:
     """Load cache from MongoDB."""
     try:
-        cache_item = cache_collection.find_one({"content_hash": content_hash, "type": cache_type})
+        cache_item = cache_collection.find_one(
+            {"content_hash": content_hash, "type": cache_type})
         if cache_item:
-            logger.debug(f"Cache loaded for hash {content_hash} and type {cache_type}")
+            logger.debug(
+                f"Cache loaded for hash {content_hash} and type {cache_type}")
             return cache_item['data']
-        logger.debug(f"No existing cache found for hash {content_hash} and type {cache_type}")
+        logger.debug(
+            f"No existing cache found for hash {content_hash} and type {cache_type}")
         return None
     except Exception as e:
         logger.error(f"Failed to load cache: {str(e)}")
         return None
+
 
 def save_cache(content_hash: str, cache_type: str, data: str) -> None:
     """Save cache to MongoDB."""
@@ -109,9 +121,11 @@ def save_cache(content_hash: str, cache_type: str, data: str) -> None:
             {"$set": {"data": data}},
             upsert=True
         )
-        logger.debug(f"Cache saved for hash {content_hash} and type {cache_type}")
+        logger.debug(
+            f"Cache saved for hash {content_hash} and type {cache_type}")
     except Exception as e:
         logger.error(f"Failed to save cache: {str(e)}")
+
 
 def convert_paper_to_steps(paper_text: str) -> Optional[str]:
     """Convert paper text to steps, with caching and error handling."""
@@ -128,9 +142,11 @@ def convert_paper_to_steps(paper_text: str) -> Optional[str]:
     You are the world's best researcher. You will be given a research paper and your task is to give a step-by-step list of instructions to implement the research paper.
     {paper_text}
 
-    Please generate a step-by-step list of instructions to implement the main ideas and algorithms described in this paper.
+    If it machine learning research paper then, Please generate a step-by-step list of instructions to implement the main ideas and algorithms described in this paper.
     Provide the output in the following format:
     - Steps: List of steps to implement the main ideas and algorithms described in this paper
+    If it is not machine learning research paper then,
+    - It is not research paper 
     """
 
     max_retries = 3
@@ -144,17 +160,20 @@ def convert_paper_to_steps(paper_text: str) -> Optional[str]:
             steps = result.text
 
             operation_time = time.time() - start_time
-            logger.info(f"Paper processed successfully in {operation_time:.2f} seconds")
+            logger.info(
+                f"Paper processed successfully in {operation_time:.2f} seconds")
 
             save_cache(content_hash, "steps", steps)
 
             return steps
         except exceptions.InternalServerError as e:
             if attempt < max_retries - 1:
-                logger.warning(f"Internal server error, retrying in {retry_delay} seconds: {str(e)}")
+                logger.warning(
+                    f"Internal server error, retrying in {retry_delay} seconds: {str(e)}")
                 time.sleep(retry_delay)
             else:
-                logger.error(f"Failed to process paper after {max_retries} attempts: {str(e)}")
+                logger.error(
+                    f"Failed to process paper after {max_retries} attempts: {str(e)}")
                 raise
         except exceptions.ResourceExhausted as e:
             logger.error(f"Rate limit exceeded: {str(e)}")
@@ -165,6 +184,7 @@ def convert_paper_to_steps(paper_text: str) -> Optional[str]:
             raise
 
     return None
+
 
 def steps_to_code(steps: str) -> Optional[str]:
     """Convert steps to code, with caching and error handling."""
@@ -183,11 +203,13 @@ def steps_to_code(steps: str) -> Optional[str]:
             messages=[
                 {
                     "role": "user",
-                    "content": f'''You are the world's best programmer. You will be given a list of steps to implement a research paper. 
+                    "content": f'''You are the world's best programmer. If You will be given a list of steps to implement a research paper. 
                                 Please generate a Python code that implements the main ideas and algorithms described in this paper with example code.
                                 You need to return only the code, no explanations or texts.
                                 
                                 List of steps: - {steps} 
+
+                                Oherwise return "It is not research paper"
                                 '''
                 }
             ],
@@ -196,7 +218,8 @@ def steps_to_code(steps: str) -> Optional[str]:
 
         generated_code = code_creation.choices[0].message.content
         code_generation_time = time.time() - code_start_time
-        logger.info(f"Code generated successfully in {code_generation_time:.2f} seconds")
+        logger.info(
+            f"Code generated successfully in {code_generation_time:.2f} seconds")
 
         save_cache(content_hash, "code", generated_code)
 
@@ -206,27 +229,46 @@ def steps_to_code(steps: str) -> Optional[str]:
         logger.debug(f"Traceback: {traceback.format_exc()}")
         return None
 
-def process_paper(paper_content: str) -> Tuple[Optional[str], Optional[str]]:
-    """Process a paper content and return generated steps and code."""
+
+def process_paper(content: str, generate_steps: bool = True, generate_code: bool = True) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Process paper content and return generated steps and/or code.
+
+    Args:
+        content (str): The paper content or existing steps.
+        generate_steps (bool): Whether to generate steps from the content. Default is True.
+        generate_code (bool): Whether to generate code from the steps. Default is True.
+
+    Returns:
+        Tuple[Optional[str], Optional[str]]: Generated steps and code, or None for each if generation fails.
+    """
     try:
-        logger.info("Processing paper content")
-        
-        steps = convert_paper_to_steps(paper_content)
-        if steps is None:
-            logger.warning("Failed to generate steps")
-            return None, None
-        
-        code = steps_to_code(steps)
-        if code is None:
-            logger.warning("Failed to generate code")
-            return steps, None
-        
+        steps = None
+        code = None
+
+        if generate_steps:
+            logger.info("Generating steps from paper content")
+            steps = convert_paper_to_steps(content)
+            if steps is None:
+                logger.warning("Failed to generate steps")
+                return None, None
+        else:
+            steps = content  # Use the provided content as steps
+
+        if generate_code:
+            logger.info("Generating code from steps")
+            code = steps_to_code(steps)
+            if code is None:
+                logger.warning("Failed to generate code")
+                return steps, None
+
         logger.info("Paper processing completed successfully")
         return steps, code
     except Exception as e:
         logger.error(f"Error processing paper content: {str(e)}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
         return None, None
+
 
 # if __name__ == "__main__":
 #     # Example usage and testing

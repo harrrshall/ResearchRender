@@ -83,7 +83,6 @@ def extract_text_from_pdf(file_content):
     except Exception as e:
         logging.error(f"Error extracting text from PDF: {str(e)}")
         return None
-
 @app.route('/upload', methods=['POST'])
 @rate_limit
 def upload_file():
@@ -104,51 +103,58 @@ def upload_file():
         # Generate a hash of the file content
         content_hash = hashlib.md5(file_content).hexdigest()
 
-        # Check if this file has been recently processed
-        recent_file = files_collection.find_one({'content_hash': content_hash})
-        if recent_file:
-            return jsonify({'error': 'This file has been recently processed. Please wait before uploading again.'}), 429
+        # Check if this file has been processed before
+        existing_file = files_collection.find_one({'content_hash': content_hash})
+        if existing_file:
+            # If both steps and code exist, return them
+            if existing_file.get('steps') and existing_file.get('code'):
+                return jsonify({
+                    'steps': existing_file['steps'],
+                    'code': existing_file['code'],
+                    'message': 'File has been processed before. Returning existing results.'
+                })
+            # If only steps exist, generate code
+            elif existing_file.get('steps'):
+                try:
+                    code = process_paper(existing_file['steps'], generate_steps=False)
+                    files_collection.update_one(
+                        {'_id': existing_file['_id']},
+                        {'$set': {'code': code}}
+                    )
+                    return jsonify({
+                        'steps': existing_file['steps'],
+                        'code': code,
+                        'message': 'Steps existed. Generated new code.'
+                    })
+                except Exception as e:
+                    return jsonify({'error': f'Error generating code: {str(e)}'}), 500
 
-        # Store file in MongoDB
-        try:
-            file_id = files_collection.insert_one({
-                'filename': filename,
-                'content': Binary(file_content),
-                'content_hash': content_hash
-            }).inserted_id
-        except Exception as e:
-            return jsonify({'error': f'Error storing file: {str(e)}'}), 500
-
-        # Process the file content
+        # Process new file
         try:
             if filename.lower().endswith('.pdf'):
                 paper_content = extract_text_from_pdf(file_content)
                 if paper_content is None:
                     return jsonify({'error': 'Failed to extract text from PDF'}), 500
             else:
-                try:
-                    paper_content = file_content.decode('utf-8')
-                except UnicodeDecodeError:
-                    return jsonify({'error': 'The uploaded file is not a valid text file'}), 400
+                paper_content = file_content.decode('utf-8')
 
             steps, code = process_paper(paper_content)
 
             if steps is None:
                 return jsonify({'error': 'Failed to generate steps from the paper'}), 500
 
-            if code is None:
-                return jsonify({'error': 'Failed to generate code from the steps'}), 500
-
-            # Delete the file from MongoDB after processing
-            files_collection.delete_one({'_id': file_id})
+            # Store results in MongoDB
+            files_collection.insert_one({
+                'filename': filename,
+                'content_hash': content_hash,
+                'steps': steps,
+                'code': code
+            })
 
             return jsonify({'steps': steps, 'code': code})
         except UnicodeDecodeError:
-            files_collection.delete_one({'_id': file_id})
             return jsonify({'error': 'The uploaded file is not a valid text file'}), 400
         except Exception as e:
-            # Delete the file from MongoDB if processing fails
-            files_collection.delete_one({'_id': file_id})
             return jsonify({'error': f'Error processing file: {str(e)}'}), 500
     else:
         return jsonify({'error': 'Allowed file types are txt, pdf, doc, docx'}), 400
